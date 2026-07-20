@@ -47,6 +47,7 @@ downloadIfMissing("config.lua")
 
 download("shared/config.lua")
 download("shared/protocol.lua")
+download("shared/banknet.lua")
 
 if mode == "server" then
     download("bank_server.lua")
@@ -70,5 +71,6 @@ else
     print("ATM installed or updated.")
 end
 
+print("BankNet library installed at shared/banknet.lua.")
 print("Local config.lua was preserved when already present.")
 print("Reboot to start the bank program.")

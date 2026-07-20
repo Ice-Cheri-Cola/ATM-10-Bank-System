@@ -152,6 +152,15 @@ local function getBalance(username)
     })
 end
 
+local function getHistory(username, limit)
+    return sendRequest({
+        action = "history",
+        requestId = requestId(),
+        username = username,
+        limit = limit or 5
+    })
+end
+
 local function moveFromPlayer(amount)
     if manager.exportItem then
         return manager.exportItem(config.ATM_VAULT_NAME, {
@@ -230,10 +239,10 @@ local function drawMenu()
     center(4, "BAL: " .. tostring(currentBalance or 0),
         currentBalance and THEME.success or THEME.warning)
 
-    addButton("deposit", "DEPOSIT", 1, 6, W, 6, THEME.deposit)
-    addButton("withdraw", "WITHDRAW", 1, 7, W, 7, THEME.withdraw, colors.black)
-    addButton("refresh", "REFRESH", 1, 8, W, 8, THEME.button)
-    addButton("exit", "EXIT", 1, 9, W, 9, THEME.error)
+    addButton("deposit", "DEPOSIT", 1, 6, 7, 7, THEME.deposit)
+    addButton("withdraw", "WITHDRAW", 9, 6, W, 7, THEME.withdraw, colors.black)
+    addButton("history", "HISTORY", 1, 8, 7, 9, THEME.button)
+    addButton("refresh", "REFRESH", 9, 8, W, 9, THEME.panel)
 
     if statusText then
         center(10, statusText, statusColor)
@@ -327,6 +336,38 @@ local function waitForBack()
             return
         end
     end
+end
+
+local function showHistory()
+    drawFrame("HISTORY")
+    center(3, "RECENT ACTIVITY", THEME.muted)
+
+    local response = getHistory(currentUsername, 5)
+    if not response.ok then
+        center(6, "SERVER ERROR", THEME.error)
+        center(7, tostring(response.message), THEME.error)
+        addButton("back", "BACK", 1, 10, W, 10, THEME.button)
+        waitForBack()
+        return
+    end
+
+    local entries = response.data and response.data.entries or {}
+    if #entries == 0 then
+        center(6, "NO ACTIVITY", THEME.muted)
+    else
+        for i = 1, math.min(#entries, 5) do
+            local entry = entries[i]
+            local sign = entry.kind == "deposit" and "+" or "-"
+            local label = entry.kind == "deposit" and "DEP" or "WDR"
+            local amount = tonumber(entry.amount) or 0
+            local text = string.format("%s%-3s %d", sign, label, amount)
+            center(3 + i, text,
+                entry.kind == "deposit" and THEME.success or THEME.warning)
+        end
+    end
+
+    addButton("back", "BACK", 1, 10, W, 10, THEME.button)
+    waitForBack()
 end
 
 local function doDeposit()
@@ -431,6 +472,8 @@ while true do
                 doDeposit()
             elseif id == "withdraw" then
                 doWithdraw()
+            elseif id == "history" then
+                showHistory()
             elseif id == "refresh" then
                 statusText = "REFRESHING"
                 statusColor = THEME.warning
@@ -441,12 +484,6 @@ while true do
                 else
                     sound("error")
                 end
-            elseif id == "exit" then
-                drawFrame("SESSION END")
-                center(6, "THANK YOU", THEME.success)
-                sleep(2)
-                currentUsername = nil
-                currentBalance = nil
             end
         end
     end

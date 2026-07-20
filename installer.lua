@@ -60,6 +60,7 @@ if mode == "server" then
 else
     download("bank_atm.lua")
     download("atm/atm.lua")
+    download("atm/config.lua")
     download("atm/touchscreen.lua")
 
     local startup = fs.open("startup.lua", "w")

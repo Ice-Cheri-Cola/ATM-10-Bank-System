@@ -70,7 +70,7 @@ end
 local function writeAt(x, y, text, fg, bg)
     text = tostring(text or "")
     if y < 1 or y > H or x > W then return end
-    if x < 1 then x = 1 end
+    x = math.max(1, x)
     if #text > W - x + 1 then
         text = text:sub(1, W - x + 1)
     end
@@ -96,7 +96,13 @@ local function addButton(id, label, x1, y1, x2, y2, bg, fg)
     local y = math.floor((y1 + y2) / 2)
     local x = math.floor((x1 + x2 - #label) / 2) + 1
     writeAt(x, y, label, fg or THEME.text, bg or THEME.button)
-    buttons[#buttons + 1] = {id = id, x1 = x1, y1 = y1, x2 = x2, y2 = y2}
+    buttons[#buttons + 1] = {
+        id = id,
+        x1 = x1,
+        y1 = y1,
+        x2 = x2,
+        y2 = y2
+    }
 end
 
 local function hitButton(x, y)
@@ -133,7 +139,7 @@ local function sendRequest(message)
                 return b
             end
         elseif event == "timer" and a == timer then
-            return {ok = false, message = "Bank server did not respond."}
+            return {ok = false, message = "Bank server timeout"}
         end
     end
 end
@@ -161,7 +167,7 @@ local function moveFromPlayer(amount)
         })
     end
 
-    error("This Inventory Manager has no supported deposit method.")
+    error("No supported deposit method.")
 end
 
 local function moveToPlayer(amount)
@@ -179,7 +185,7 @@ local function moveToPlayer(amount)
         })
     end
 
-    error("This Inventory Manager has no supported withdrawal method.")
+    error("No supported withdrawal method.")
 end
 
 local function drawFrame(title)
@@ -213,37 +219,26 @@ end
 
 local function drawCardRequired()
     drawFrame("CARD REQUIRED")
-    center(math.max(4, math.floor(H / 2) - 1), "INSERT BOUND CARD", THEME.warning)
-    center(math.max(5, math.floor(H / 2) + 1), "Use Inventory Manager", THEME.text)
+    center(5, "INSERT CARD", THEME.warning)
+    center(7, "IN INV MANAGER", THEME.text)
 end
 
 local function drawMenu()
-    drawFrame("SECURE TOUCH ATM")
+    drawFrame("TOUCH ATM")
 
-    writeAt(2, 4, "Welcome:", THEME.muted)
-    writeAt(2, 5, currentUsername or "Unknown", THEME.text)
-
-    center(7, "BALANCE", THEME.muted)
-    center(8, tostring(currentBalance or 0) .. " Diamonds",
+    center(3, currentUsername or "Unknown", THEME.text)
+    center(4, "BAL: " .. tostring(currentBalance or 0),
         currentBalance and THEME.success or THEME.warning)
 
-    local x1 = 2
-    local x2 = W - 1
-    local buttonHeight = 2
-    local y = 10
-
-    addButton("deposit", "DEPOSIT", x1, y, x2, y + buttonHeight - 1, THEME.deposit)
-    y = y + 3
-    addButton("withdraw", "WITHDRAW", x1, y, x2, y + buttonHeight - 1, THEME.withdraw, colors.black)
-    y = y + 3
-    addButton("refresh", "REFRESH", x1, y, x2, y + buttonHeight - 1, THEME.button)
-    y = y + 3
-    if y + 1 <= H - 1 then
-        addButton("exit", "EXIT", x1, y, x2, y + buttonHeight - 1, THEME.error)
-    end
+    addButton("deposit", "DEPOSIT", 1, 6, W, 6, THEME.deposit)
+    addButton("withdraw", "WITHDRAW", 1, 7, W, 7, THEME.withdraw, colors.black)
+    addButton("refresh", "REFRESH", 1, 8, W, 8, THEME.button)
+    addButton("exit", "EXIT", 1, 9, W, 9, THEME.error)
 
     if statusText then
-        center(H, statusText, statusColor)
+        center(10, statusText, statusColor)
+    else
+        center(10, "SELECT OPTION", THEME.muted)
     end
 end
 
@@ -254,12 +249,14 @@ local function drawMessage(title, lines, color)
         list[#list + 1] = line
     end
 
-    local startY = math.max(4, math.floor((H - #list) / 2) - 1)
+    local startY = 4
     for i, line in ipairs(list) do
-        center(startY + i - 1, line, color or THEME.text)
+        if startY + i - 1 <= 8 then
+            center(startY + i - 1, line, color or THEME.text)
+        end
     end
 
-    addButton("back", "BACK", 2, H - 2, W - 1, H - 1, THEME.button)
+    addButton("back", "BACK", 1, 10, W, 10, THEME.button)
 end
 
 local function amountKeypad(mode)
@@ -268,12 +265,8 @@ local function amountKeypad(mode)
 
     local function draw()
         drawFrame(title)
-        center(4, "Amount: " .. (amountText == "" and "0" or amountText), THEME.success)
+        center(3, "AMT: " .. (amountText == "" and "0" or amountText), THEME.success)
 
-        local keyWidth = math.max(4, math.floor((W - 6) / 3))
-        local totalWidth = keyWidth * 3 + 2
-        local startX = math.floor((W - totalWidth) / 2) + 1
-        local startY = 6
         local keys = {
             {"1", "1"}, {"2", "2"}, {"3", "3"},
             {"4", "4"}, {"5", "5"}, {"6", "6"},
@@ -284,15 +277,16 @@ local function amountKeypad(mode)
         for i, key in ipairs(keys) do
             local row = math.floor((i - 1) / 3)
             local col = (i - 1) % 3
-            local x1 = startX + col * (keyWidth + 1)
-            local y1 = startY + row * 2
+            local x1 = col * 5 + 1
+            local x2 = math.min(W, x1 + 4)
+            local y = 4 + row
             local bg = THEME.button
             if key[1] == "clear" then bg = THEME.error end
             if key[1] == "go" then bg = THEME.deposit end
-            addButton(key[1], key[2], x1, y1, x1 + keyWidth - 1, y1, bg)
+            addButton(key[1], key[2], x1, y, x2, y, bg)
         end
 
-        addButton("cancel", "CANCEL", 2, H - 2, W - 1, H - 1, THEME.panel)
+        addButton("cancel", "CANCEL", 1, 9, W, 10, THEME.panel)
     end
 
     draw()
@@ -319,7 +313,7 @@ local function amountKeypad(mode)
                     return math.floor(amount)
                 end
                 sound("error")
-                center(5, "Enter 1-" .. config.MAX_TRANSACTION, THEME.error)
+                center(8, "ENTER 1-" .. config.MAX_TRANSACTION, THEME.error)
             end
         end
     end
@@ -340,12 +334,12 @@ local function doDeposit()
     if not amount then return end
 
     drawFrame("DEPOSITING")
-    center(math.floor(H / 2), "Moving diamonds...", THEME.warning)
+    center(6, "MOVING ITEMS", THEME.warning)
 
     local moved = moveFromPlayer(amount)
     if moved <= 0 then
         sound("error")
-        drawMessage("DEPOSIT FAILED", "No diamonds moved.\nCheck inventory/vault.", THEME.error)
+        drawMessage("FAILED", "NO DIAMONDS\nCHECK VAULT", THEME.error)
         waitForBack()
         return
     end
@@ -361,14 +355,10 @@ local function doDeposit()
     if response.ok then
         currentBalance = response.data.balance
         sound("success")
-        drawMessage("DEPOSIT COMPLETE",
-            "+" .. moved .. " Diamonds\nBalance: " .. currentBalance,
-            THEME.success)
+        drawMessage("DEPOSIT OK", "+" .. moved .. " DIAMONDS\nBAL: " .. currentBalance, THEME.success)
     else
         sound("error")
-        drawMessage("RECOVERY NEEDED",
-            moved .. " moved, not credited.\nID: " .. id,
-            THEME.error)
+        drawMessage("RECOVERY", moved .. " NOT CREDITED\nID SAVED", THEME.error)
     end
     waitForBack()
 end
@@ -378,7 +368,7 @@ local function doWithdraw()
     if not amount then return end
 
     drawFrame("WITHDRAWING")
-    center(math.floor(H / 2), "Contacting server...", THEME.warning)
+    center(6, "CONTACT SERVER", THEME.warning)
 
     local id = requestId()
     local prepared = sendRequest({
@@ -390,7 +380,7 @@ local function doWithdraw()
 
     if not prepared.ok then
         sound("error")
-        drawMessage("WITHDRAW DENIED", tostring(prepared.message), THEME.error)
+        drawMessage("DENIED", tostring(prepared.message), THEME.error)
         waitForBack()
         return
     end
@@ -406,14 +396,10 @@ local function doWithdraw()
     if committed.ok then
         currentBalance = committed.data.balance
         sound("success")
-        drawMessage("WITHDRAW COMPLETE",
-            "-" .. moved .. " Diamonds\nBalance: " .. currentBalance,
-            THEME.success)
+        drawMessage("WITHDRAW OK", "-" .. moved .. " DIAMONDS\nBAL: " .. currentBalance, THEME.success)
     else
         sound("error")
-        drawMessage("TRANSACTION ERROR",
-            "Items moved; update failed.\nID: " .. id,
-            THEME.error)
+        drawMessage("ERROR", "ITEMS MOVED\nID SAVED", THEME.error)
     end
     waitForBack()
 end
@@ -446,18 +432,18 @@ while true do
             elseif id == "withdraw" then
                 doWithdraw()
             elseif id == "refresh" then
-                statusText = "Refreshing..."
+                statusText = "REFRESHING"
                 statusColor = THEME.warning
                 if refreshBalance() then
-                    statusText = "Refreshed"
+                    statusText = "REFRESHED"
                     statusColor = THEME.success
                     sound("success")
                 else
                     sound("error")
                 end
             elseif id == "exit" then
-                drawFrame("SESSION ENDED")
-                center(math.floor(H / 2), "Thank you!", THEME.success)
+                drawFrame("SESSION END")
+                center(6, "THANK YOU", THEME.success)
                 sleep(2)
                 currentUsername = nil
                 currentBalance = nil

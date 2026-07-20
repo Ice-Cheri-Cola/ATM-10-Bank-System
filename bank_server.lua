@@ -79,6 +79,27 @@ local function addHistory(username, kind, amount, balance, requestId)
     end
 end
 
+local function getHistory(username, limit)
+    limit = math.max(1, math.min(math.floor(tonumber(limit) or 5), 20))
+    local result = {}
+
+    for i = #state.history, 1, -1 do
+        local entry = state.history[i]
+        if entry.username == username then
+            result[#result + 1] = {
+                kind = entry.kind,
+                amount = entry.amount,
+                balance = entry.balance,
+                timestamp = entry.timestamp
+            }
+
+            if #result >= limit then break end
+        end
+    end
+
+    return result
+end
+
 local function cleanupReservations()
     local cutoff = now() - (config.WITHDRAW_RESERVATION_SECONDS * 1000)
 
@@ -140,6 +161,13 @@ local function process(senderId, message)
             balance = account.balance,
             frozen = account.frozen
         })
+        return
+    end
+
+    if action == "history" then
+        reply(senderId, requestId, true, {
+            entries = getHistory(username, message.limit)
+        }, "History loaded.")
         return
     end
 

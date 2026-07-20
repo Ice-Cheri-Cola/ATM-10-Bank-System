@@ -79,6 +79,15 @@ function banknet.getBalance(username)
     return nil, response.message, response
 end
 
+function banknet.getHistory(username, limit)
+    limit = math.max(1, math.min(math.floor(tonumber(limit) or 5), 20))
+    local response = banknet.request("history", username, {limit = limit})
+    if response.ok and response.data then
+        return response.data.entries or {}, nil, response
+    end
+    return nil, response.message, response
+end
+
 function banknet.deposit(username, amount, requestIdOverride)
     if not validAmount(amount) then
         return {ok = false, message = "Invalid deposit amount."}

@@ -5,14 +5,10 @@ if config.BANK_SERVER_ID == 0 then
 end
 
 local monitor = peripheral.find("monitor")
-if not monitor then
-    error("No Advanced Monitor connected.")
-end
+if not monitor then error("No Advanced Monitor connected.") end
 
 local modem = peripheral.find("modem")
-if not modem then
-    error("No modem connected to this ATM.")
-end
+if not modem then error("No modem connected to this ATM.") end
 
 local manager = peripheral.find("inventory_manager")
     or peripheral.find("inventoryManager")
@@ -26,7 +22,6 @@ monitor.setTextScale(0.5)
 
 local W, H = monitor.getSize()
 local buttons = {}
-local currentScreen = "menu"
 local currentUsername = nil
 local currentBalance = nil
 local statusText = nil
@@ -34,9 +29,8 @@ local statusColor = colors.white
 
 local THEME = {
     background = colors.black,
-    panel = colors.gray,
     header = colors.blue,
-    accent = colors.cyan,
+    panel = colors.gray,
     text = colors.white,
     muted = colors.lightGray,
     success = colors.lime,
@@ -44,8 +38,7 @@ local THEME = {
     error = colors.red,
     deposit = colors.green,
     withdraw = colors.orange,
-    button = colors.blue,
-    buttonText = colors.white
+    button = colors.blue
 }
 
 local function sound(kind)
@@ -60,8 +53,14 @@ local function sound(kind)
 end
 
 local function fill(x1, y1, x2, y2, bg)
+    x1 = math.max(1, x1)
+    y1 = math.max(1, y1)
+    x2 = math.min(W, x2)
+    y2 = math.min(H, y2)
+    if x2 < x1 or y2 < y1 then return end
+
     monitor.setBackgroundColor(bg)
-    local width = math.max(0, x2 - x1 + 1)
+    local width = x2 - x1 + 1
     for y = y1, y2 do
         monitor.setCursorPos(x1, y)
         monitor.write(string.rep(" ", width))
@@ -69,16 +68,23 @@ local function fill(x1, y1, x2, y2, bg)
 end
 
 local function writeAt(x, y, text, fg, bg)
+    text = tostring(text or "")
+    if y < 1 or y > H or x > W then return end
+    if x < 1 then x = 1 end
+    if #text > W - x + 1 then
+        text = text:sub(1, W - x + 1)
+    end
     if bg then monitor.setBackgroundColor(bg) end
     monitor.setTextColor(fg or THEME.text)
     monitor.setCursorPos(x, y)
-    monitor.write(tostring(text or ""))
+    monitor.write(text)
 end
 
 local function center(y, text, fg, bg)
     text = tostring(text or "")
+    if #text > W then text = text:sub(1, W) end
     local x = math.floor((W - #text) / 2) + 1
-    writeAt(math.max(1, x), y, text, fg, bg)
+    writeAt(x, y, text, fg, bg)
 end
 
 local function clearButtons()
@@ -89,14 +95,8 @@ local function addButton(id, label, x1, y1, x2, y2, bg, fg)
     fill(x1, y1, x2, y2, bg or THEME.button)
     local y = math.floor((y1 + y2) / 2)
     local x = math.floor((x1 + x2 - #label) / 2) + 1
-    writeAt(x, y, label, fg or THEME.buttonText, bg or THEME.button)
-    buttons[#buttons + 1] = {
-        id = id,
-        x1 = x1,
-        y1 = y1,
-        x2 = x2,
-        y2 = y2
-    }
+    writeAt(x, y, label, fg or THEME.text, bg or THEME.button)
+    buttons[#buttons + 1] = {id = id, x1 = x1, y1 = y1, x2 = x2, y2 = y2}
 end
 
 local function hitButton(x, y)
@@ -106,13 +106,12 @@ local function hitButton(x, y)
             return button.id
         end
     end
-    return nil
 end
 
 local function requestId()
-    return tostring(os.getComputerID())
-        .. "-" .. tostring(os.epoch("utc"))
-        .. "-" .. tostring(math.random(100000, 999999))
+    return tostring(os.getComputerID()) .. "-"
+        .. tostring(os.epoch("utc")) .. "-"
+        .. tostring(math.random(100000, 999999))
 end
 
 local function getUsername()
@@ -183,23 +182,15 @@ local function moveToPlayer(amount)
     error("This Inventory Manager has no supported withdrawal method.")
 end
 
-local function drawFrame(subtitle)
+local function drawFrame(title)
     monitor.setBackgroundColor(THEME.background)
     monitor.setTextColor(THEME.text)
     monitor.clear()
     clearButtons()
 
-    fill(1, 1, W, 3, THEME.header)
-    center(2, "ATM-10 DIAMOND BANK", THEME.text, THEME.header)
-    center(4, subtitle or "SECURE TOUCH TERMINAL", THEME.muted, THEME.background)
-end
-
-local function drawCardRequired()
-    currentScreen = "card"
-    drawFrame("CARD REQUIRED")
-    center(math.floor(H / 2) - 2, "INSERT BOUND MEMORY CARD", THEME.warning)
-    center(math.floor(H / 2), "Place the card in the Inventory Manager.", THEME.text)
-    center(math.floor(H / 2) + 2, "The card owner must be online.", THEME.muted)
+    fill(1, 1, W, 2, THEME.header)
+    center(1, "ATM-10 BANK", THEME.text, THEME.header)
+    center(2, title or "TOUCH ATM", THEME.text, THEME.header)
 end
 
 local function refreshBalance()
@@ -220,95 +211,94 @@ local function refreshBalance()
     return false
 end
 
+local function drawCardRequired()
+    drawFrame("CARD REQUIRED")
+    center(math.max(4, math.floor(H / 2) - 1), "INSERT BOUND CARD", THEME.warning)
+    center(math.max(5, math.floor(H / 2) + 1), "Use Inventory Manager", THEME.text)
+end
+
 local function drawMenu()
-    currentScreen = "menu"
-    drawFrame("SECURE TOUCH TERMINAL")
+    drawFrame("SECURE TOUCH ATM")
 
-    writeAt(3, 6, "WELCOME", THEME.muted)
-    writeAt(3, 7, currentUsername or "Unknown", THEME.text)
+    writeAt(2, 4, "Welcome:", THEME.muted)
+    writeAt(2, 5, currentUsername or "Unknown", THEME.text)
 
-    local balanceText = currentBalance and tostring(currentBalance) or "Unavailable"
-    center(10, "AVAILABLE BALANCE", THEME.muted)
-    center(12, balanceText .. " " .. config.CURRENCY_NAME, currentBalance and THEME.success or THEME.warning)
+    center(7, "BALANCE", THEME.muted)
+    center(8, tostring(currentBalance or 0) .. " Diamonds",
+        currentBalance and THEME.success or THEME.warning)
 
-    local margin = 3
-    local gap = 2
-    local buttonWidth = math.floor((W - margin * 2 - gap) / 2)
-    local leftX1 = margin
-    local leftX2 = leftX1 + buttonWidth - 1
-    local rightX1 = leftX2 + gap + 1
-    local rightX2 = W - margin
-    local topY = math.max(15, math.floor(H / 2))
+    local x1 = 2
+    local x2 = W - 1
+    local buttonHeight = 2
+    local y = 10
 
-    addButton("deposit", "DEPOSIT", leftX1, topY, leftX2, topY + 3, THEME.deposit)
-    addButton("withdraw", "WITHDRAW", rightX1, topY, rightX2, topY + 3, THEME.withdraw, colors.black)
-    addButton("refresh", "REFRESH", leftX1, topY + 5, leftX2, topY + 8, THEME.button)
-    addButton("exit", "EXIT", rightX1, topY + 5, rightX2, topY + 8, colors.red)
+    addButton("deposit", "DEPOSIT", x1, y, x2, y + buttonHeight - 1, THEME.deposit)
+    y = y + 3
+    addButton("withdraw", "WITHDRAW", x1, y, x2, y + buttonHeight - 1, THEME.withdraw, colors.black)
+    y = y + 3
+    addButton("refresh", "REFRESH", x1, y, x2, y + buttonHeight - 1, THEME.button)
+    y = y + 3
+    if y + 1 <= H - 1 then
+        addButton("exit", "EXIT", x1, y, x2, y + buttonHeight - 1, THEME.error)
+    end
 
     if statusText then
-        center(H - 1, statusText, statusColor)
-    else
-        center(H - 1, "Touch an option to continue", THEME.muted)
+        center(H, statusText, statusColor)
     end
 end
 
-local function drawMessage(title, message, color)
-    currentScreen = "message"
+local function drawMessage(title, lines, color)
     drawFrame(title)
-
-    local lines = {}
-    for line in tostring(message):gmatch("[^\n]+") do
-        lines[#lines + 1] = line
+    local list = {}
+    for line in tostring(lines):gmatch("[^\n]+") do
+        list[#list + 1] = line
     end
 
-    local startY = math.max(7, math.floor(H / 2) - math.floor(#lines / 2) - 2)
-    for i, line in ipairs(lines) do
+    local startY = math.max(4, math.floor((H - #list) / 2) - 1)
+    for i, line in ipairs(list) do
         center(startY + i - 1, line, color or THEME.text)
     end
 
-    addButton("back", "BACK TO MENU", 4, H - 5, W - 3, H - 2, THEME.button)
+    addButton("back", "BACK", 2, H - 2, W - 1, H - 1, THEME.button)
 end
 
 local function amountKeypad(mode)
-    currentScreen = "keypad"
     local amountText = ""
-    local title = mode == "deposit" and "DEPOSIT DIAMONDS" or "WITHDRAW DIAMONDS"
+    local title = mode == "deposit" and "DEPOSIT" or "WITHDRAW"
 
     local function draw()
         drawFrame(title)
-        center(6, "ENTER AMOUNT", THEME.muted)
-        fill(4, 8, W - 3, 11, THEME.panel)
-        center(9, amountText == "" and "0" or amountText, THEME.text, THEME.panel)
+        center(4, "Amount: " .. (amountText == "" and "0" or amountText), THEME.success)
 
-        local keypadWidth = math.min(27, W - 6)
-        local keyWidth = math.floor((keypadWidth - 2) / 3)
-        local startX = math.floor((W - (keyWidth * 3 + 2)) / 2) + 1
-        local startY = 13
+        local keyWidth = math.max(4, math.floor((W - 6) / 3))
+        local totalWidth = keyWidth * 3 + 2
+        local startX = math.floor((W - totalWidth) / 2) + 1
+        local startY = 6
         local keys = {
             {"1", "1"}, {"2", "2"}, {"3", "3"},
             {"4", "4"}, {"5", "5"}, {"6", "6"},
             {"7", "7"}, {"8", "8"}, {"9", "9"},
-            {"clear", "CLEAR"}, {"0", "0"}, {"go", "ENTER"}
+            {"clear", "CLR"}, {"0", "0"}, {"go", "OK"}
         }
 
         for i, key in ipairs(keys) do
             local row = math.floor((i - 1) / 3)
             local col = (i - 1) % 3
             local x1 = startX + col * (keyWidth + 1)
-            local y1 = startY + row * 3
+            local y1 = startY + row * 2
             local bg = THEME.button
-            if key[1] == "clear" then bg = colors.red end
-            if key[1] == "go" then bg = colors.green end
-            addButton(key[1], key[2], x1, y1, x1 + keyWidth - 1, y1 + 1, bg)
+            if key[1] == "clear" then bg = THEME.error end
+            if key[1] == "go" then bg = THEME.deposit end
+            addButton(key[1], key[2], x1, y1, x1 + keyWidth - 1, y1, bg)
         end
 
-        addButton("cancel", "CANCEL", 4, H - 3, W - 3, H - 1, colors.gray)
+        addButton("cancel", "CANCEL", 2, H - 2, W - 1, H - 1, THEME.panel)
     end
 
     draw()
 
     while true do
-        local event, side, x, y = os.pullEvent()
+        local event, _, x, y = os.pullEvent()
         if event == "monitor_touch" then
             local id = hitButton(x, y)
             if id then sound("touch") end
@@ -328,12 +318,19 @@ local function amountKeypad(mode)
                 if amount and amount >= 1 and amount <= config.MAX_TRANSACTION then
                     return math.floor(amount)
                 end
-                statusText = "Enter 1 to " .. config.MAX_TRANSACTION
-                statusColor = THEME.error
                 sound("error")
-                draw()
-                center(12, statusText, THEME.error)
+                center(5, "Enter 1-" .. config.MAX_TRANSACTION, THEME.error)
             end
+        end
+    end
+end
+
+local function waitForBack()
+    while true do
+        local event, _, x, y = os.pullEvent()
+        if event == "monitor_touch" and hitButton(x, y) == "back" then
+            sound("touch")
+            return
         end
     end
 end
@@ -342,15 +339,14 @@ local function doDeposit()
     local amount = amountKeypad("deposit")
     if not amount then return end
 
-    drawFrame("DEPOSIT IN PROGRESS")
-    center(math.floor(H / 2), "Moving diamonds into the vault...", THEME.warning)
+    drawFrame("DEPOSITING")
+    center(math.floor(H / 2), "Moving diamonds...", THEME.warning)
 
     local moved = moveFromPlayer(amount)
     if moved <= 0 then
         sound("error")
-        drawMessage("DEPOSIT FAILED",
-            "No diamonds could be moved.\nCheck your inventory and vault connection.",
-            THEME.error)
+        drawMessage("DEPOSIT FAILED", "No diamonds moved.\nCheck inventory/vault.", THEME.error)
+        waitForBack()
         return
     end
 
@@ -365,25 +361,24 @@ local function doDeposit()
     if response.ok then
         currentBalance = response.data.balance
         sound("success")
-        local note = "Deposited " .. moved .. " diamonds.\nNew balance: " .. currentBalance
-        if moved < amount then
-            note = note .. "\nOnly part of the requested amount was accepted."
-        end
-        drawMessage("DEPOSIT COMPLETE", note, THEME.success)
+        drawMessage("DEPOSIT COMPLETE",
+            "+" .. moved .. " Diamonds\nBalance: " .. currentBalance,
+            THEME.success)
     else
         sound("error")
-        drawMessage("RECOVERY REQUIRED",
-            moved .. " diamonds entered the vault,\nbut the account was not credited.\nRecovery ID: " .. id,
+        drawMessage("RECOVERY NEEDED",
+            moved .. " moved, not credited.\nID: " .. id,
             THEME.error)
     end
+    waitForBack()
 end
 
 local function doWithdraw()
     local amount = amountKeypad("withdraw")
     if not amount then return end
 
-    drawFrame("VERIFYING WITHDRAWAL")
-    center(math.floor(H / 2), "Contacting bank server...", THEME.warning)
+    drawFrame("WITHDRAWING")
+    center(math.floor(H / 2), "Contacting server...", THEME.warning)
 
     local id = requestId()
     local prepared = sendRequest({
@@ -395,14 +390,12 @@ local function doWithdraw()
 
     if not prepared.ok then
         sound("error")
-        drawMessage("WITHDRAWAL DENIED", tostring(prepared.message), THEME.error)
+        drawMessage("WITHDRAW DENIED", tostring(prepared.message), THEME.error)
+        waitForBack()
         return
     end
 
-    drawFrame("WITHDRAWAL IN PROGRESS")
-    center(math.floor(H / 2), "Moving diamonds from the vault...", THEME.warning)
     local moved = moveToPlayer(amount)
-
     local committed = sendRequest({
         action = "withdraw_commit",
         requestId = id,
@@ -413,17 +406,16 @@ local function doWithdraw()
     if committed.ok then
         currentBalance = committed.data.balance
         sound("success")
-        local note = "Withdrawn " .. moved .. " diamonds.\nNew balance: " .. currentBalance
-        if moved < amount then
-            note = note .. "\nVault stock or inventory space limited delivery."
-        end
-        drawMessage("WITHDRAWAL COMPLETE", note, THEME.success)
+        drawMessage("WITHDRAW COMPLETE",
+            "-" .. moved .. " Diamonds\nBalance: " .. currentBalance,
+            THEME.success)
     else
         sound("error")
         drawMessage("TRANSACTION ERROR",
-            "Diamonds moved, but account update failed.\nRecovery ID: " .. id,
+            "Items moved; update failed.\nID: " .. id,
             THEME.error)
     end
+    waitForBack()
 end
 
 math.randomseed(os.epoch("utc"))
@@ -435,11 +427,7 @@ while true do
         currentUsername = nil
         currentBalance = nil
         drawCardRequired()
-        local timer = os.startTimer(2)
-        while true do
-            local event, a = os.pullEvent()
-            if event == "timer" and a == timer then break end
-        end
+        sleep(2)
     else
         if username ~= currentUsername then
             currentUsername = username
@@ -448,8 +436,7 @@ while true do
         end
 
         drawMenu()
-        local event, side, x, y = os.pullEvent()
-
+        local event, _, x, y = os.pullEvent()
         if event == "monitor_touch" then
             local id = hitButton(x, y)
             if id then sound("touch") end
@@ -459,11 +446,10 @@ while true do
             elseif id == "withdraw" then
                 doWithdraw()
             elseif id == "refresh" then
-                statusText = "Refreshing account..."
+                statusText = "Refreshing..."
                 statusColor = THEME.warning
-                drawMenu()
                 if refreshBalance() then
-                    statusText = "Account refreshed"
+                    statusText = "Refreshed"
                     statusColor = THEME.success
                     sound("success")
                 else
@@ -471,7 +457,7 @@ while true do
                 end
             elseif id == "exit" then
                 drawFrame("SESSION ENDED")
-                center(math.floor(H / 2), "Thank you for banking with ATM-10.", THEME.success)
+                center(math.floor(H / 2), "Thank you!", THEME.success)
                 sleep(2)
                 currentUsername = nil
                 currentBalance = nil

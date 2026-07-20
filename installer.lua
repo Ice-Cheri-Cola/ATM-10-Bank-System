@@ -32,7 +32,19 @@ local function download(path)
     end
 end
 
-download("config.lua")
+local function downloadIfMissing(path)
+    if fs.exists(path) then
+        print("Keeping existing " .. path .. ".")
+        return
+    end
+
+    download(path)
+end
+
+-- Preserve local settings such as the working vault direction and server ID.
+-- Fresh installations still receive the repository's default config.lua.
+downloadIfMissing("config.lua")
+
 download("shared/config.lua")
 download("shared/protocol.lua")
 
@@ -44,8 +56,7 @@ if mode == "server" then
     startup.writeLine('shell.run("server/server.lua")')
     startup.close()
 
-    print("Server installed.")
-    print("Configured bank server ID: 20")
+    print("Server installed or updated.")
 else
     download("bank_atm.lua")
     download("atm/atm.lua")
@@ -54,8 +65,8 @@ else
     startup.writeLine('shell.run("atm/atm.lua")')
     startup.close()
 
-    print("ATM installed.")
-    print("Configured bank server ID: 20")
+    print("ATM installed or updated.")
 end
 
+print("Local config.lua was preserved when already present.")
 print("Reboot to start the bank program.")

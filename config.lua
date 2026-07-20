@@ -1,8 +1,8 @@
 return {
     PROTOCOL = "atm10_bank_v1",
 
-    -- Set this on every ATM to the computer ID of bank_server.lua.
-    BANK_SERVER_ID = 0,
+    -- Central bank server computer ID.
+    BANK_SERVER_ID = 20,
 
     CURRENCY_ITEM = "minecraft:diamond",
     CURRENCY_NAME = "Diamonds",

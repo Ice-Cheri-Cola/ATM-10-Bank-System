@@ -43,25 +43,57 @@ local function downloadIfMissing(path)
     download(path)
 end
 
-local function patchTransferFields(path)
+local function rewriteFile(path, transform, label)
     local handle = fs.open(path, "r")
     if not handle then
-        error("Could not open " .. path .. " for transfer patch.")
+        error("Could not open " .. path .. " for " .. label .. ".")
     end
 
     local content = handle.readAll()
     handle.close()
 
-    content = content:gsub("toUsername%s*=%s*recipient", "recipient = recipient")
-    content = content:gsub('reason%s*=%s*"ATM transfer"', 'description = "ATM transfer"')
+    local updated = transform(content)
 
     handle = fs.open(path, "w")
     if not handle then
-        error("Could not save transfer patch to " .. path)
+        error("Could not save " .. label .. " to " .. path)
     end
 
-    handle.write(content)
+    handle.write(updated)
     handle.close()
+end
+
+local function patchTransferFields(path)
+    rewriteFile(path, function(content)
+        content = content:gsub("toUsername%s*=%s*recipient", "recipient = recipient")
+        content = content:gsub('reason%s*=%s*"ATM transfer"', 'description = "ATM transfer"')
+        return content
+    end, "transfer patch")
+end
+
+local function patchWirelessModemSelection(path)
+    rewriteFile(path, function(content)
+        local replacement = [[local modem = peripheral.find("modem", function(_, wrapped)
+    return wrapped.isWireless and wrapped.isWireless()
+end)
+if not modem then
+    error("No wireless modem connected to this ATM.")
+end]]
+
+        content = content:gsub(
+            'local modem = peripheral%.find%("modem"%)\nif not modem then error%("No modem connected to this ATM%."%) end',
+            replacement,
+            1
+        )
+
+        content = content:gsub(
+            'local modem = peripheral%.find%("modem"%)\nif not modem then\n    error%("No modem connected to this ATM%."%)\nend',
+            replacement,
+            1
+        )
+
+        return content
+    end, "wireless modem patch")
 end
 
 -- Preserve local settings such as the working vault direction and server ID.
@@ -87,6 +119,8 @@ else
     download("atm/config.lua")
     download("atm/touchscreen.lua")
     patchTransferFields("atm/touchscreen.lua")
+    patchWirelessModemSelection("bank_atm.lua")
+    patchWirelessModemSelection("atm/touchscreen.lua")
 
     local startup = fs.open("startup.lua", "w")
     startup.writeLine('shell.run("atm/atm.lua")')
@@ -97,4 +131,5 @@ end
 
 print("BankNet library installed at shared/banknet.lua.")
 print("Local config.lua was preserved when already present.")
+print("Wired inventory peripherals are supported; BankNet uses the wireless modem.")
 print("Reboot to start the bank program.")

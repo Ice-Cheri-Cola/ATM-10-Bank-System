@@ -8,10 +8,10 @@ return {
     CURRENCY_NAME = "Diamonds",
 
     -- Advanced Peripherals 0.8-style relative inventory name.
-    ATM_VAULT_NAME = "@up",
+    ATM_VAULT_NAME = "@back",
 
     -- Advanced Peripherals 0.7-style direction.
-    ATM_VAULT_DIRECTION = "up",
+    ATM_VAULT_DIRECTION = "back",
 
     REQUEST_TIMEOUT = 5,
     WITHDRAW_RESERVATION_SECONDS = 30,

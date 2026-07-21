@@ -38,6 +38,7 @@ local THEME = {
     error = colors.red,
     deposit = colors.green,
     withdraw = colors.orange,
+    transfer = colors.purple,
     button = colors.blue
 }
 
@@ -161,6 +162,14 @@ local function getHistory(username, limit)
     })
 end
 
+local function getAccounts(username)
+    return sendRequest({
+        action = "list_accounts",
+        requestId = requestId(),
+        username = username
+    })
+end
+
 local function moveFromPlayer(amount)
     if manager.exportItem then
         return manager.exportItem(config.ATM_VAULT_NAME, {
@@ -239,10 +248,11 @@ local function drawMenu()
     center(4, "BAL: " .. tostring(currentBalance or 0),
         currentBalance and THEME.success or THEME.warning)
 
-    addButton("deposit", "DEPOSIT", 1, 6, 7, 7, THEME.deposit)
-    addButton("withdraw", "WITHDRAW", 9, 6, W, 7, THEME.withdraw, colors.black)
-    addButton("history", "HISTORY", 1, 8, 7, 9, THEME.button)
-    addButton("refresh", "REFRESH", 9, 8, W, 9, THEME.panel)
+    addButton("deposit", "DEPOSIT", 1, 5, 7, 6, THEME.deposit)
+    addButton("withdraw", "WITHDRAW", 9, 5, W, 6, THEME.withdraw, colors.black)
+    addButton("transfer", "TRANSFER", 1, 7, W, 8, THEME.transfer)
+    addButton("history", "HISTORY", 1, 9, 7, 9, THEME.button)
+    addButton("refresh", "REFRESH", 9, 9, W, 9, THEME.panel)
 
     if statusText then
         center(10, statusText, statusColor)
@@ -268,9 +278,11 @@ local function drawMessage(title, lines, color)
     addButton("back", "BACK", 1, 10, W, 10, THEME.button)
 end
 
-local function amountKeypad(mode)
+local function amountKeypad(mode, recipient)
     local amountText = ""
-    local title = mode == "deposit" and "DEPOSIT" or "WITHDRAW"
+    local title = "WITHDRAW"
+    if mode == "deposit" then title = "DEPOSIT" end
+    if mode == "transfer" then title = "SEND TO " .. tostring(recipient) end
 
     local function draw()
         drawFrame(title)
@@ -338,6 +350,66 @@ local function waitForBack()
     end
 end
 
+local function chooseRecipient()
+    drawFrame("TRANSFER")
+    center(4, "LOADING ACCOUNTS", THEME.warning)
+
+    local response = getAccounts(currentUsername)
+    if not response.ok then
+        drawMessage("FAILED", tostring(response.message), THEME.error)
+        waitForBack()
+        return nil
+    end
+
+    local accounts = response.data and response.data.accounts or {}
+    local recipients = {}
+    for _, name in ipairs(accounts) do
+        if name ~= currentUsername then
+            recipients[#recipients + 1] = name
+        end
+    end
+
+    if #recipients == 0 then
+        drawMessage("TRANSFER", "NO OTHER ACCOUNTS", THEME.warning)
+        waitForBack()
+        return nil
+    end
+
+    local page = 1
+    local perPage = 4
+    local pages = math.max(1, math.ceil(#recipients / perPage))
+
+    while true do
+        drawFrame("CHOOSE PLAYER")
+        local first = (page - 1) * perPage + 1
+        local last = math.min(#recipients, first + perPage - 1)
+
+        for i = first, last do
+            local row = i - first
+            addButton("user:" .. recipients[i], recipients[i], 1, 3 + row, W, 3 + row, THEME.transfer)
+        end
+
+        if pages > 1 then
+            addButton("prev", "<", 1, 8, 4, 8, THEME.panel)
+            center(8, page .. "/" .. pages, THEME.muted)
+            addButton("next", ">", W - 3, 8, W, 8, THEME.panel)
+        end
+        addButton("cancel", "BACK", 1, 10, W, 10, THEME.button)
+
+        local event, _, x, y = os.pullEvent()
+        if event == "monitor_touch" then
+            local id = hitButton(x, y)
+            if id then sound("touch") end
+            if id == "cancel" then return nil end
+            if id == "prev" and page > 1 then page = page - 1 end
+            if id == "next" and page < pages then page = page + 1 end
+            if type(id) == "string" and id:sub(1, 5) == "user:" then
+                return id:sub(6)
+            end
+        end
+    end
+end
+
 local function showHistory()
     drawFrame("HISTORY")
     center(3, "RECENT ACTIVITY", THEME.muted)
@@ -357,12 +429,17 @@ local function showHistory()
     else
         for i = 1, math.min(#entries, 5) do
             local entry = entries[i]
-            local sign = entry.kind == "deposit" and "+" or "-"
-            local label = entry.kind == "deposit" and "DEP" or "WDR"
+            local kind = tostring(entry.kind or "")
+            local sign, label, color = "-", "WDR", THEME.warning
+            if kind == "deposit" then
+                sign, label, color = "+", "DEP", THEME.success
+            elseif kind == "transfer_in" then
+                sign, label, color = "+", "IN", THEME.success
+            elseif kind == "transfer_out" then
+                sign, label, color = "-", "OUT", THEME.warning
+            end
             local amount = tonumber(entry.amount) or 0
-            local text = string.format("%s%-3s %d", sign, label, amount)
-            center(3 + i, text,
-                entry.kind == "deposit" and THEME.success or THEME.warning)
+            center(3 + i, string.format("%s%-3s %d", sign, label, amount), color)
         end
     end
 
@@ -385,10 +462,9 @@ local function doDeposit()
         return
     end
 
-    local id = requestId()
     local response = sendRequest({
         action = "deposit",
-        requestId = id,
+        requestId = requestId(),
         username = currentUsername,
         amount = moved
     })
@@ -445,6 +521,37 @@ local function doWithdraw()
     waitForBack()
 end
 
+local function doTransfer()
+    local recipient = chooseRecipient()
+    if not recipient then return end
+
+    local amount = amountKeypad("transfer", recipient)
+    if not amount then return end
+
+    drawFrame("SENDING")
+    center(5, tostring(amount) .. " DIAMONDS", THEME.warning)
+    center(6, "TO " .. recipient, THEME.text)
+
+    local response = sendRequest({
+        action = "transfer",
+        requestId = requestId(),
+        username = currentUsername,
+        toUsername = recipient,
+        amount = amount,
+        reason = "ATM transfer"
+    })
+
+    if response.ok then
+        currentBalance = response.data.balance
+        sound("success")
+        drawMessage("TRANSFER OK", amount .. " TO " .. recipient .. "\nBAL: " .. currentBalance, THEME.success)
+    else
+        sound("error")
+        drawMessage("DENIED", tostring(response.message), THEME.error)
+    end
+    waitForBack()
+end
+
 math.randomseed(os.epoch("utc"))
 
 while true do
@@ -472,6 +579,8 @@ while true do
                 doDeposit()
             elseif id == "withdraw" then
                 doWithdraw()
+            elseif id == "transfer" then
+                doTransfer()
             elseif id == "history" then
                 showHistory()
             elseif id == "refresh" then

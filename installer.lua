@@ -9,6 +9,7 @@ if mode ~= "server" and mode ~= "atm" then
 end
 
 local base = "https://raw.githubusercontent.com/Ice-Cheri-Cola/ATM-10-Bank-System/main/"
+local cacheBuster = tostring(os.epoch("utc"))
 
 local function ensureParent(path)
     local parent = fs.getDir(path)
@@ -25,9 +26,10 @@ local function download(path)
     end
 
     print("Downloading " .. path .. "...")
-    shell.run("wget", base .. path, path)
+    local url = base .. path .. "?v=" .. cacheBuster
+    local ok = shell.run("wget", url, path)
 
-    if not fs.exists(path) then
+    if not ok or not fs.exists(path) then
         error("Failed to download " .. path)
     end
 end

@@ -64,13 +64,15 @@ local function getAccount(username)
     return state.accounts[username]
 end
 
-local function addHistory(username, kind, amount, balance, requestId)
+local function addHistory(username, kind, amount, balance, requestId, counterparty, description)
     table.insert(state.history, {
         username = username,
         kind = kind,
         amount = amount,
         balance = balance,
         requestId = requestId,
+        counterparty = counterparty,
+        description = description,
         timestamp = now()
     })
 
@@ -90,6 +92,8 @@ local function getHistory(username, limit)
                 kind = entry.kind,
                 amount = entry.amount,
                 balance = entry.balance,
+                counterparty = entry.counterparty,
+                description = entry.description,
                 timestamp = entry.timestamp
             }
 
@@ -98,6 +102,22 @@ local function getHistory(username, limit)
     end
 
     return result
+end
+
+local function listAccounts(excludeUsername)
+    local names = {}
+
+    for username in pairs(state.accounts) do
+        if username ~= excludeUsername then
+            names[#names + 1] = username
+        end
+    end
+
+    table.sort(names, function(a, b)
+        return string.lower(a) < string.lower(b)
+    end)
+
+    return names
 end
 
 local function cleanupReservations()
@@ -127,6 +147,13 @@ local function validAmount(amount)
         and amount == math.floor(amount)
         and amount > 0
         and amount <= config.MAX_TRANSACTION
+end
+
+local function cleanDescription(value)
+    if type(value) ~= "string" then return nil end
+    value = value:gsub("[%c]", " "):sub(1, 40)
+    if value == "" then return nil end
+    return value
 end
 
 local function reply(senderId, requestId, ok, data, message)
@@ -171,6 +198,13 @@ local function process(senderId, message)
         return
     end
 
+    if action == "list_accounts" then
+        reply(senderId, requestId, true, {
+            accounts = listAccounts(username)
+        }, "Account directory loaded.")
+        return
+    end
+
     if account.frozen then
         reply(senderId, requestId, false, nil, "This bank account is frozen.")
         return
@@ -197,6 +231,70 @@ local function process(senderId, message)
         save()
 
         reply(senderId, requestId, true, result, "Deposit completed.")
+        return
+    end
+
+    if action == "transfer" then
+        local amount = tonumber(message.amount)
+        local recipientName = tostring(message.recipient or "")
+        local description = cleanDescription(message.description)
+
+        if not validAmount(amount) then
+            reply(senderId, requestId, false, nil, "Invalid transfer amount.")
+            return
+        end
+
+        if recipientName == "" then
+            reply(senderId, requestId, false, nil, "Choose a recipient.")
+            return
+        end
+
+        if recipientName == username then
+            reply(senderId, requestId, false, nil, "You cannot transfer money to yourself.")
+            return
+        end
+
+        local recipient = state.accounts[recipientName]
+        if not recipient then
+            reply(senderId, requestId, false, nil, "Recipient account was not found.")
+            return
+        end
+
+        if recipient.frozen then
+            reply(senderId, requestId, false, nil, "Recipient account is frozen.")
+            return
+        end
+
+        if state.processed[requestId] then
+            reply(senderId, requestId, true, state.processed[requestId], "Already processed.")
+            return
+        end
+
+        local available = account.balance - reservedFor(username)
+        if amount > available then
+            reply(senderId, requestId, false, {
+                balance = account.balance,
+                available = available
+            }, "Insufficient funds.")
+            return
+        end
+
+        account.balance = account.balance - amount
+        recipient.balance = recipient.balance + amount
+
+        local result = {
+            balance = account.balance,
+            amount = amount,
+            recipient = recipientName,
+            recipientBalance = recipient.balance
+        }
+
+        state.processed[requestId] = result
+        addHistory(username, "transfer_out", amount, account.balance, requestId, recipientName, description)
+        addHistory(recipientName, "transfer_in", amount, recipient.balance, requestId, username, description)
+        save()
+
+        reply(senderId, requestId, true, result, "Transfer completed.")
         return
     end
 

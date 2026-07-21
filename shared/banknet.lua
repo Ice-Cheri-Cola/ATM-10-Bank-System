@@ -88,6 +88,39 @@ function banknet.getHistory(username, limit)
     return nil, response.message, response
 end
 
+function banknet.listAccounts(username)
+    local response = banknet.request("list_accounts", username)
+    if response.ok and response.data then
+        return response.data.accounts or {}, nil, response
+    end
+    return nil, response.message, response
+end
+
+function banknet.transfer(fromUsername, toUsername, amount, description, requestIdOverride)
+    if not validName(fromUsername) then
+        return {ok = false, message = "Invalid sender username."}
+    end
+
+    if not validName(toUsername) then
+        return {ok = false, message = "Invalid recipient username."}
+    end
+
+    if fromUsername == toUsername then
+        return {ok = false, message = "You cannot transfer money to yourself."}
+    end
+
+    if not validAmount(amount) then
+        return {ok = false, message = "Invalid transfer amount."}
+    end
+
+    return banknet.request("transfer", fromUsername, {
+        recipient = toUsername,
+        amount = amount,
+        description = description,
+        requestId = requestIdOverride
+    })
+end
+
 function banknet.deposit(username, amount, requestIdOverride)
     if not validAmount(amount) then
         return {ok = false, message = "Invalid deposit amount."}

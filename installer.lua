@@ -43,6 +43,27 @@ local function downloadIfMissing(path)
     download(path)
 end
 
+local function patchTransferFields(path)
+    local handle = fs.open(path, "r")
+    if not handle then
+        error("Could not open " .. path .. " for transfer patch.")
+    end
+
+    local content = handle.readAll()
+    handle.close()
+
+    content = content:gsub("toUsername%s*=%s*recipient", "recipient = recipient")
+    content = content:gsub('reason%s*=%s*"ATM transfer"', 'description = "ATM transfer"')
+
+    handle = fs.open(path, "w")
+    if not handle then
+        error("Could not save transfer patch to " .. path)
+    end
+
+    handle.write(content)
+    handle.close()
+end
+
 -- Preserve local settings such as the working vault direction and server ID.
 -- Fresh installations still receive the repository's default config.lua.
 downloadIfMissing("config.lua")
@@ -65,6 +86,7 @@ else
     download("atm/atm.lua")
     download("atm/config.lua")
     download("atm/touchscreen.lua")
+    patchTransferFields("atm/touchscreen.lua")
 
     local startup = fs.open("startup.lua", "w")
     startup.writeLine('shell.run("atm/atm.lua")')
